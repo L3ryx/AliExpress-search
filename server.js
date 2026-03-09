@@ -161,17 +161,91 @@ app.post("/analyze", upload.array("images"), async (req, res) => {
     try {
 
       const response = await axios.get(
-        "https://serpapi.com/search",
+        "h<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="UTF-8">
+<title>Etsy → AliExpress Finder</title>
+
+<style>
+
+body{
+font-family:Arial;
+background:#0f172a;
+color:white;
+text-align:center;
+padding:40px;
+}
+
+input,button{
+padding:10px;
+margin:10px;
+}
+
+button{
+background:#22c55e;
+border:none;
+color:white;
+cursor:pointer;
+}
+
+.result{
+background:#1e293b;
+margin-top:20px;
+padding:20px;
+border-radius:10px;
+}
+
+img{
+width:200px;
+border-radius:6px;
+}
+
+#logs{
+background:black;
+padding:10px;
+margin-top:20px;
+height:150px;
+overflow:auto;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h1>Etsy → AliExpress Product Finder</h1>
+
+<input id="keyword" placeholder="keyword">
+<input id="limit" type="number" value="10">
+
+<button onclick="search()">
+Search
+</button>
+
+<h2>Logs</h2>
+<div id="logs"></div>
+
+<h2>Results</h2>
+<div id="results"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="script.js"></script>
+
+</body>
+</html>"https://google.serper.dev/images",
         {
           params: {
             engine: "google_reverse_image",
             image_url: publicImageUrl,
-            api_key: process.env.SERPAPI_KEY
+            X-API-KEY: process.env.SERPER_API_KEY
           }
         }
       );
 
-      serpResults = response.data?.image_results || [];
+      serperResults = response.data?.image_results || [];
 
       sendLog(socket, `📦 ${serpResults.length} results found`);
 
@@ -179,7 +253,7 @@ app.post("/analyze", upload.array("images"), async (req, res) => {
 
       sendLog(
         socket,
-        `❌ SerpAPI error | ${err.response?.status}`,
+        `❌ Serper error | ${err.response?.status}`,
         "error"
       );
 
