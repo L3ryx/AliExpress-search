@@ -1,0 +1,37 @@
+/* ========================= */
+/* LOG STYLES */
+/* ========================= */
+
+.log-info {
+  color: white;
+  font-size: 14px;
+}
+
+.log-success {
+  color: #00ff88;
+  font-size: 14px;
+}
+
+.log-error {
+  color: red;
+  font-size: 14px;
+}
+
+/* ========================= */
+/* RESULT CARD */
+/* ========================= */
+
+.result-card {
+  background: #111;
+  padding: 15px;
+  border-radius: 10px;
+  margin-top: 15px;
+  color: white;
+}
+
+.product {
+  background: #1e1e1e;
+  padding: 10px;
+  margin-top: 8px;
+  border-radius: 8px;
+}
