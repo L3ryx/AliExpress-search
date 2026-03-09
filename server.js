@@ -36,84 +36,85 @@ time: new Date().toISOString()
 }
 }
 
-/* ===================================================== /
-/ 🔎 ETSY SEARCH (IMAGE + LINK STABLE EXTRACTION) /
-/ ===================================================== */
+/*
 
-app.post("/search-etsy", async (req, res) => {
+UPLOAD IMAGE TO IMGBB (TO FIX 414)
 
-console.log("🔥 Search route called");
+*/
 
-const { keyword, limit } = req.body;
+async function uploadToImgBB(imageBuffer) {
 
-if (!keyword) {
-return res.status(400).json({ error: "Keyword required" });
+const base64 = imageBuffer.toString("base64");
+
+const response = await axios.post(
+"https://api.imgbb.com/1/upload",
+new URLSearchParams({
+key: process.env.IMGBB_KEY,
+image: base64
+}),
+{
+headers: {
+"Content-Type": "application/x-www-form-urlencoded"
+}
+}
+);
+
+return response.data.data.url;
 }
 
-const maxItems = Math.min(parseInt(limit) || 10, 50);
+/*
 
-try {
+SIMILARITY
 
-const etsyUrl =  
-  `https://www.etsy.com/search?q=${encodeURIComponent(keyword)}`;  
+*/
 
-/* ===================================================== */  
-/* CALL SCRAPERAPI */  
-/* ===================================================== */  
+async function calculateSimilarity(base64A, base64B) {
 
-const scraperResponse = await axios.get(  
-  "https://api.scraperapi.com/",  
-  {  
-    params: {  
-      api_key: process.env.SCRAPAPI_KEY,  
-      url: etsyUrl,  
-      render: true  
-    }  
-  }  
-);  
+const response = await axios.post(
+"https://api.openai.com/v1/chat/completions",
+{
+model: "gpt-4o-mini",
+messages: [
+{
+role: "user",
+content: [
+{ type: "text", text: "Return only similarity 0 to 1." },
+{
+type: "image_url",
+image_url: {
+url: data:image/jpeg;base64,${base64A}
+}
+},
+{
+type: "image_url",
+image_url: {
+url: data:image/jpeg;base64,${base64B}
+}
+}
+]
+}
+]
+},
+{
+headers: {
+Authorization: Bearer ${process.env.OPENAI_API_KEY}
+}
+}
+);
 
-const html = scraperResponse.data;  
+const text = response.data.choices[0].message.content;
+const match = text.match(/0.\d+|1(.0+)?/);
 
-/* ===================================================== */  
-/* ✅ STABLE EXTRACTION */  
-/* ===================================================== */  
-
-const imageRegex = /https:\/\/i\.etsystatic\.com[^"]+/g;  
-const linkRegex = /https:\/\/www\.etsy\.com\/listing\/\d+/g;  
-
-const images = [...html.matchAll(imageRegex)].map(m => m[0]);  
-const links = [...html.matchAll(linkRegex)].map(m => m[0]);  
-
-const results = [];  
-
-for (let i = 0; i < Math.min(maxItems, images.length); i++) {  
-
-  results.push({  
-    image: images[i],  
-    link: links[i] || etsyUrl  
-  });  
-
-}  
-
-res.json({ results });
-
-} catch (err) {
-
-console.error("ScraperAPI Error:", err.message);  
-
-res.status(500).json({  
-  error: "Scraping failed"  
-});
-
+return match ? parseFloat(match[0]) : 0;
 }
 
-});
+/*
 
-/* ===================================================== /
-/ 🧠 IMAGE ANALYSIS PIPELINE /
-/ ===================================================== */
+ANALYZE ROUTE
 
-app.post("/analyze-images", upload.array("images"), async (req, res) => {
+*/
+
+app.post("/analyze", upload.array("images"), async (req, res) => {
 
 const socketId = req.body.socketId;
 const socket = io.sockets.sockets.get(socketId);
@@ -122,33 +123,28 @@ const results = [];
 
 for (const file of req.files) {
 
-sendLog(socket, `Processing ${file.originalname}`);  
+sendLog(socket, `🖼 Processing ${file.originalname}`);  
 
-const base64 = file.buffer.toString("base64");  
+/*  
+============================================  
+STEP 1 — UPLOAD IMAGE TO GET PUBLIC URL  
+============================================  
+*/  
 
-/* ===================================================== */  
-/* UPLOAD IMAGE TO IMGBB */  
-/* ===================================================== */  
-
-let imageUrl;  
+let publicImageUrl;  
 
 try {  
 
-  const uploadRes = await axios.post(  
-    "https://api.imgbb.com/1/upload",  
-    new URLSearchParams({  
-      key: process.env.IMGBB_KEY,  
-      image: base64  
-    })  
-  );  
+  sendLog(socket, "📤 Uploading image to ImgBB");  
 
-  imageUrl = uploadRes.data.data.url;  
+  publicImageUrl = await uploadToImgBB(file.buffer);  
 
-  sendLog(socket, "Uploaded to IMGBB");  
+  sendLog(socket, "✅ Image uploaded successfully");  
 
 } catch (err) {  
 
-  sendLog(socket, "IMGBB upload failed");  
+  sendLog(socket, "❌ Image upload failed", "error");  
+
   continue;  
 }  
 
@@ -221,69 +217,6 @@ results.push({
 }
 
 res.json({ results });
-});
-
-/* ===================================================== */  
-/* OPENAI VISION ANALYSIS */  
-/* ===================================================== */  
-
-try {  
-
-  const vision = await axios.post(  
-    "https://api.openai.com/v1/chat/completions",  
-    {  
-      model: "gpt-4o-mini",  
-      messages: [  
-        {  
-          role: "user",  
-          content: [  
-            {  
-              type: "text",  
-              text: "Return similarity score between 0 and 100."  
-            },  
-            {  
-              type: "image_url",  
-              image_url: {  
-                url: imageUrl  
-              }  
-            }  
-          ]  
-        }  
-      ]  
-    },  
-    {  
-      headers: {  
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,  
-        "Content-Type": "application/json"  
-      }  
-    }  
-  );  
-
-  const text = vision.data.choices[0].message.content;  
-  const match = text.match(/\d+/);  
-  const similarity = match ? parseInt(match[0]) : 0;  
-
-  sendLog(socket, `AI Similarity: ${similarity}%`);  
-
-  results.push({  
-    image: file.originalname,  
-    matches: [  
-      {  
-        url: "AI_ANALYSIS",  
-        similarity  
-      }  
-    ]  
-  });  
-
-} catch (err) {  
-
-  sendLog(socket, "OpenAI Vision failed");  
-}
-
-}
-
-res.json({ results });
-
 });
 
 /*
