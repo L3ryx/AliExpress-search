@@ -1,141 +1,161 @@
-// ========================================
-// SOCKET CONNECTION
-// ========================================
+const socket = io()
 
-const socket = io();
-let socketId = null;
+let socketId = null
 
-socket.on("connected", (data) => {
-  socketId = data.socketId;
-  console.log("🟢 Socket connected:", socketId);
-});
+socket.on("connected", data => {
 
-// ========================================
-// LIVE LOGS
-// ========================================
+socketId = data.socketId
 
-socket.on("log", (data) => {
+addLog("Connected to server")
 
-  const logsDiv = document.getElementById("logs");
+})
 
-  const line = document.createElement("div");
+socket.on("log", data => {
 
-  line.className = `log-${data.type}`;
+addLog(data.message)
 
-  line.innerHTML = `
-    <span style="color:#888">
-      [${new Date(data.time).toLocaleTimeString()}]
-    </span>
-    ${data.message}
-  `;
+})
 
-  logsDiv.appendChild(line);
+function addLog(message){
 
-  logsDiv.scrollTop = logsDiv.scrollHeight;
-});
+const logs = document.getElementById("logs")
 
-// ========================================
-// FORM SUBMISSION
-// ========================================
+const line = document.createElement("div")
 
-const form = document.getElementById("uploadForm");
-const resultsContainer = document.getElementById("results");
+line.textContent = message
 
-form.addEventListener("submit", async (e) => {
+logs.appendChild(line)
 
-  e.preventDefault();
+logs.scrollTop = logs.scrollHeight
 
-  resultsContainer.innerHTML = "";
-  document.getElementById("logs").innerHTML =
-    "<p>🚀 Starting analysis...</p>";
+}
 
-  const filesInput = document.querySelector("input[type='file']");
-  const files = filesInput.files;
+/* ============================= */
+/* ETSY SEARCH */
+/* ============================= */
 
-  if (!files || files.length === 0) {
-    alert("Please upload at least one image");
-    return;
-  }
+async function searchEtsy(){
 
-  const formData = new FormData();
+const keyword = document.getElementById("keyword").value
+const limit = document.getElementById("limit").value
 
-  for (const file of files) {
-    formData.append("images", file);
-  }
+if(!keyword){
 
-  formData.append("socketId", socketId);
+alert("Enter keyword")
 
-  try {
+return
 
-    const response = await fetch("/analyze", {
-      method: "POST",
-      body: formData
-    });
+}
 
-    const data = await response.json();
+addLog("Searching Etsy...")
 
-    displayResults(data.results);
+const response = await fetch("/search-etsy",{
 
-  } catch (err) {
+method:"POST",
 
-    console.error("❌ Request failed:", err);
+headers:{
+"Content-Type":"application/json"
+},
 
-  }
+body:JSON.stringify({
+keyword,
+limit
+})
 
-});
+})
 
-// ========================================
-// DISPLAY RESULTS
-// ========================================
+const data = await response.json()
 
-function displayResults(results) {
+displayResults(data.results)
 
-  const resultsContainer = document.getElementById("results");
+}
 
-  if (!results || results.length === 0) {
+/* ============================= */
+/* IMAGE ANALYSIS */
+/* ============================= */
 
-    resultsContainer.innerHTML =
-      "<p style='color:red'>❌ No results returned</p>";
+async function analyzeImages(){
 
-    return;
-  }
+const files = document.getElementById("images").files
 
-  results.forEach(result => {
+if(!files.length){
 
-    const card = document.createElement("div");
-    card.className = "result-card";
+alert("Select images")
 
-    let html = `
-      <h3>📷 ${result.image}</h3>
-    `;
+return
 
-    if (!result.matches || result.matches.length === 0) {
+}
 
-      html += `
-        <p style="color:red">
-          ❌ No match found (≥60%)
-        </p>
-      `;
+const formData = new FormData()
 
-    } else {
+for(const file of files){
 
-      result.matches.forEach(match => {
+formData.append("images",file)
 
-        html += `
-          <div class="product">
-            <p>🔥 Similarity: ${match.similarity}%</p>
-            <a href="${match.url}" target="_blank">
-              🔗 Open Product
-            </a>
-          </div>
-        `;
+}
 
-      });
+formData.append("socketId",socketId)
 
-    }
+addLog("Uploading images...")
 
-    card.innerHTML = html;
-    resultsContainer.appendChild(card);
+const response = await fetch("/analyze-images",{
 
-  });
+method:"POST",
+
+body:formData
+
+})
+
+const data = await response.json()
+
+displayResults(data.results)
+
+}
+
+/* ============================= */
+/* DISPLAY RESULTS */
+/* ============================= */
+
+function displayResults(results){
+
+const container = document.getElementById("results")
+
+container.innerHTML=""
+
+results.forEach(item =>{
+
+const div = document.createElement("div")
+
+div.className="result"
+
+let html = `<strong>${item.image}</strong><br>`
+
+if(item.link){
+
+html += `<a href="${item.link}" target="_blank">View Listing</a><br>`
+html += `<img src="${item.image}"><br>`
+
+}
+
+if(item.matches){
+
+item.matches.forEach(m =>{
+
+html+=`
+<br>
+<a href="${m.url}" target="_blank">${m.url}</a>
+<br>
+Similarity: ${m.similarity}%
+`
+
+})
+
+}
+
+div.innerHTML=html
+
+container.appendChild(div)
+
+})
+
 }
