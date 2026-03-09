@@ -4,314 +4,169 @@ const multer = require("multer");
 const axios = require("axios");
 const http = require("http");
 const { Server } = require("socket.io");
+const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-const upload = multer({
-  storage: multer.memoryStorage()
-});
+// ========================
+// Middleware
+// ========================
+const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
-/*
-====================================================
-LOG SYSTEM
-====================================================
-*/
-
+// ========================
+// Logging helper
+// ========================
 function sendLog(socket, message, type = "info") {
-
-  console.log(`[${type}] ${message}`);
-
-  if (socket) {
-    socket.emit("log", {
-      message,
-      type,
-      time: new Date().toISOString()
-    });
-  }
+  console.log(`[${type.toUpperCase()}] ${message}`);
+  if (socket) socket.emit("log", { message, type, time: new Date().toISOString() });
 }
 
-/*
-====================================================
-UPLOAD IMAGE TO IMGBB (TO FIX 414)
-====================================================
-*/
+// ========================
+// Serve index.html
+// ========================
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
 
+// ========================
+// Upload image to ImgBB
+// ========================
 async function uploadToImgBB(imageBuffer) {
-
   const base64 = imageBuffer.toString("base64");
-
   const response = await axios.post(
     "https://api.imgbb.com/1/upload",
-    new URLSearchParams({
-      key: process.env.IMGBB_KEY,
-      image: base64
-    }),
-    {
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      }
-    }
+    new URLSearchParams({ key: process.env.IMGBB_KEY, image: base64 }),
+    { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
   );
-
   return response.data.data.url;
 }
 
-/*
-====================================================
-SIMILARITY
-====================================================
-*/
-
+// ========================
+// OpenAI similarity
+// ========================
 async function calculateSimilarity(base64A, base64B) {
-
-  const response = await axios.post(
-    "https://api.openai.com/v1/chat/completions",
-    {
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: "Return only similarity 0 to 1." },
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:image/jpeg;base64,${base64A}`
-              }
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:image/jpeg;base64,${base64B}`
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-      }
-    }
-  );
-
-  const text = response.data.choices[0].message.content;
-  const match = text.match(/0\.\d+|1(\.0+)?/);
-
-  return match ? parseFloat(match[0]) : 0;
+  try {
+    const response = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Return only similarity 0 to 1." },
+              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64A}` } },
+              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64B}` } }
+            ]
+          }
+        ]
+      },
+      { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
+    );
+    const text = response.data.choices[0].message.content;
+    const match = text.match(/0\.\d+|1(\.0+)?/);
+    return match ? parseFloat(match[0]) : 0;
+  } catch (err) {
+    console.error("OpenAI error:", err.message);
+    return 0;
+  }
 }
 
-/*
-====================================================
-ANALYZE ROUTE
-====================================================
-*/
-
+// ========================
+// Analyze route
+// ========================
 app.post("/analyze", upload.array("images"), async (req, res) => {
-
   const socketId = req.body.socketId;
   const socket = io.sockets.sockets.get(socketId);
 
   const results = [];
 
   for (const file of req.files) {
-
     sendLog(socket, `🖼 Processing ${file.originalname}`);
 
-    /*
-    ============================================
-    STEP 1 — UPLOAD IMAGE TO GET PUBLIC URL
-    ============================================
-    */
-
+    // STEP 1 — Upload image to ImgBB
     let publicImageUrl;
-
     try {
-
       sendLog(socket, "📤 Uploading image to ImgBB");
-
       publicImageUrl = await uploadToImgBB(file.buffer);
-
       sendLog(socket, "✅ Image uploaded successfully");
-
     } catch (err) {
-
-      sendLog(socket, "❌ Image upload failed", "error");
-
+      sendLog(socket, `❌ Image upload failed | ${err.message}`, "error");
       continue;
     }
 
-    /*
-    ============================================
-    STEP 2 — CALL SERPAPI WITH IMAGE URL
-    ============================================
-    */
-
-    sendLog(socket, "🔎 Calling SerpAPI");
-
-    let serpResults = [];
-
+    // STEP 2 — Reverse image search via ScrapAPI (instead of Serper)
+    let searchResults = [];
     try {
-
-      const response = await axios.get(
-        "h<!DOCTYPE html>
-<html>
-<head>
-
-<meta charset="UTF-8">
-<title>Etsy → AliExpress Finder</title>
-
-<style>
-
-body{
-font-family:Arial;
-background:#0f172a;
-color:white;
-text-align:center;
-padding:40px;
-}
-
-input,button{
-padding:10px;
-margin:10px;
-}
-
-button{
-background:#22c55e;
-border:none;
-color:white;
-cursor:pointer;
-}
-
-.result{
-background:#1e293b;
-margin-top:20px;
-padding:20px;
-border-radius:10px;
-}
-
-img{
-width:200px;
-border-radius:6px;
-}
-
-#logs{
-background:black;
-padding:10px;
-margin-top:20px;
-height:150px;
-overflow:auto;
-}
-
-</style>
-
-</head>
-
-<body>
-
-<h1>Etsy → AliExpress Product Finder</h1>
-
-<input id="keyword" placeholder="keyword">
-<input id="limit" type="number" value="10">
-
-<button onclick="search()">
-Search
-</button>
-
-<h2>Logs</h2>
-<div id="logs"></div>
-
-<h2>Results</h2>
-<div id="results"></div>
-
-<script src="/socket.io/socket.io.js"></script>
-<script src="script.js"></script>
-
-</body>
-</html>"https://google.serper.dev/images",
-        {
-          params: {
-            engine: "google_reverse_image",
-            image_url: publicImageUrl,
-            X-API-KEY: process.env.SERPER_API_KEY
-          }
+      const resp = await axios.get("https://api.scrapapi.com/", {
+        params: {
+          api_key: process.env.SCRAPAPI_KEY,
+          url: `https://www.google.com/searchbyimage?image_url=${encodeURIComponent(publicImageUrl)}`,
+          render: true
         }
-      );
-
-      serperResults = response.data?.image_results || [];
-
-      sendLog(socket, `📦 ${serpResults.length} results found`);
-
-    } catch (err) {
-
-      sendLog(
-        socket,
-        `❌ Serper error | ${err.response?.status}`,
-        "error"
-      );
-
-      serpResults = [];
-    }
-
-    /*
-    ============================================
-    STEP 3 — FILTER ALIEXPRESS
-    ============================================
-    */
-
-    const aliexpressLinks = serpResults
-      .filter(r => r.link?.includes("aliexpress.com"))
-      .slice(0, 10);
-
-    const matches = [];
-
-    for (const item of aliexpressLinks) {
-
-      matches.push({
-        url: item.link,
-        similarity: 70 // placeholder (tu peux remettre ton IA ici)
       });
 
+      const html = resp.data;
+
+      // simple regex to extract AliExpress links
+      const linkRegex = /https:\/\/www\.aliexpress\.com\/item\/\d+/g;
+      const imgRegex = /https:\/\/[^"]+\.jpg/g;
+
+      const links = [...html.matchAll(linkRegex)].map(m => m[0]);
+      const images = [...html.matchAll(imgRegex)].map(m => m[0]);
+
+      for (let i = 0; i < links.length && i < 5; i++) {
+        searchResults.push({ link: links[i], thumbnail: images[i] });
+      }
+
+      sendLog(socket, `🔎 ScrapAPI returned ${searchResults.length} AliExpress results`);
+    } catch (err) {
+      sendLog(socket, `❌ ScrapAPI reverse search failed | ${err.message}`, "error");
     }
 
-    results.push({
-      image: file.originalname,
-      matches
-    });
+    // STEP 3 — Compare similarity with OpenAI
+    const matches = [];
+    for (const item of searchResults) {
+      let similarity = 0;
+      try {
+        const resp = await axios.get(item.thumbnail, { responseType: "arraybuffer" });
+        const base64B = Buffer.from(resp.data).toString("base64");
+        similarity = await calculateSimilarity(file.buffer.toString("base64"), base64B);
+        sendLog(socket, `Similarity with ${item.link}: ${similarity}`);
+      } catch (err) {
+        sendLog(socket, `❌ Similarity check failed: ${err.message}`, "error");
+      }
+
+      matches.push({ url: item.link, image: item.thumbnail, similarity });
+      if (similarity >= 0.6) break;
+    }
+
+    if (matches.length === 0) sendLog(socket, "⚠️ No similar AliExpress results found");
+
+    results.push({ etsyImage: publicImageUrl, matches });
   }
 
   res.json({ results });
 });
 
-/*
-====================================================
-SOCKET
-====================================================
-*/
-
+// ========================
+// Socket.io connection
+// ========================
 io.on("connection", (socket) => {
-
-  socket.emit("connected", {
-    socketId: socket.id
-  });
-
-  console.log("🟢 Client connected");
-
+  socket.emit("connected", { socketId: socket.id });
+  sendLog(socket, "🟢 Client connected");
 });
 
-/*
-====================================================
-START
-====================================================
-*/
-
-server.listen(process.env.PORT || 3000, () => {
-  console.log("🚀 Server running");
+// ========================
+// Start server
+// ========================
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
